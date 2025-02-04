@@ -78,7 +78,7 @@ credentials.zip
 *.lock.yml
 
 #Build directories
-build-*
+build-*/
 
 .conf/.depok
 .conf/.docok
