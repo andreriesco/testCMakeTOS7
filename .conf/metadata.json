@@ -1,0 +1,6 @@
+{
+    "projectName": "testCMakeTOS7",
+    "templateName": "cmakeConsole",
+    "containerName": "testcmaketos7",
+    "torizonOSMajor": "7"
+}
