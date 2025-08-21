@@ -9,6 +9,8 @@
 
 # use the xonsh environment to update the OS environment
 $UPDATE_OS_ENVIRON = True
+# Get the full log of error
+$XONSH_SHOW_TRACEBACK = True
 # always return if a cmd fails
 $RAISE_SUBPROC_ERROR = True
 
@@ -54,8 +56,8 @@ Environment variables:
 
     TASKS_DISABLE_INTERACTIVE_INPUT     to disable interactive input
 
-    TASKS_OVERRIDE_ENV                  enable the override of the environment
-                                        variables set in the tasks.json
+    TASKS_OVERRIDE_ENV                  enable the override of the environment variables
+                                        values with the ones set in the tasks.json file
 
     DOCKER_PSSWD                        to set the docker password in CI/CD pipelines
 
@@ -165,6 +167,11 @@ except Exception as e:
         Error_Out(
             f"❌ Error: {repr(e)}",
             Error.EUSER
+        )
+    elif isinstance(e, RuntimeError):
+        Error_Out(
+            f"❌ Error: {repr(e)}",
+            Error.ETASKEXEC
         )
     else:
         Error_Out(

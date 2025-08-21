@@ -9,10 +9,13 @@
 
 # use the xonsh environment to update the OS environment
 $UPDATE_OS_ENVIRON = True
+# Get the full log of error
+$XONSH_SHOW_TRACEBACK = True
 # always return if a cmd fails
 $RAISE_SUBPROC_ERROR = True
 
 import os
+import psutil
 import sys
 import json
 import hashlib
@@ -22,7 +25,7 @@ from xonsh.procs.pipelines import CommandPipeline
 from torizon_templates_utils.tasks import replace_tasks_input
 from torizon_templates_utils.errors import Error,Error_Out
 from torizon_templates_utils.colors import Color,BgColor,print
-from torizon_templates_utils.args import get_arg_not_empty,get_optional_arg
+from torizon_templates_utils.args import get_optional_arg
 
 
 ## In case of fire break glass
@@ -30,38 +33,40 @@ from torizon_templates_utils.args import get_arg_not_empty,get_optional_arg
 # debug.breakpoint()
 
 
-if len(sys.argv) < 4:
+if "--help" in sys.argv or "-h" in sys.argv:
     print(
 """
 Usage:
-    project-updater.xsh <project_folder> <accept_all> <vscode> <second_run>
-
-        <project_folder>    The folder path where the project that will be updated is located.
+    project-updater.xsh <accept_all>
 
         <accept_all>        This is a bool like argument (True or False).
                             This signals if the updater should accept all the new
                             changes without open a diff window.
-
-    Optional:
-
-        <vscode>            This is a bool like argument (True or False).
-                            This signals if the script is being used from VS Code extension.
-                            The default is False.
-
-        <second_run>        This is a bool like argument (True or False).
-                            This is used internally to signal that the script updated
-                            itself and is running again.
 """
     )
 
-    Error_Out("", Error.EUSER)
+    exit()
 
+# Check if it's True or 1
+accept_all = get_optional_arg(1, False) in ("True", "1")
 
-project_folder = get_arg_not_empty(1)
-project_name = get_arg_not_empty(2)
-accept_all = get_arg_not_empty(3) == "True"
-vscode = get_optional_arg(4, True)
-second_run = get_optional_arg(5, False)
+script_path = os.path.realpath(__file__)
+conf_folder = os.path.dirname(script_path)
+project_folder = os.path.dirname(conf_folder)
+
+metadata_path_for_task = f"{project_folder}/.conf/metadata.json"
+with open(metadata_path_for_task) as f:
+    metadata_for_task = json.load(f)
+project_name = metadata_for_task.get("projectName")
+container_name = metadata_for_task.get("containerName")
+
+vscode = os.environ.get("TERM_PROGRAM") == "vscode" or "VSCODE_PID" in os.environ
+
+# Here we want to check if the current process was started from another project-updater process
+# We do this by checking if the name of this file is in the arguments of the parent process, as the name of the file is passed as an argument
+parent = psutil.Process(os.getppid())
+parent_cmd = parent.cmdline()
+second_run = any(os.path.basename(__file__) in arg for arg in parent_cmd)
 
 ##
 # even tough the vscode arg is true, if the TORIZON_TEMPLATES_NON_VSCODE
@@ -204,10 +209,7 @@ if not _check_if_file_content_is_equal(
     # run the updater again
     xonsh \
         @(f"{project_folder}/.conf/project-updater.xsh") \
-        @(project_folder) \
-        @(accept_all) \
-        @(vscode) \
-        True
+        @(accept_all)
 
     sys.exit(__xonsh__.last.returncode)
 
@@ -261,6 +263,12 @@ else:
 
 _torizonOSMajor = _project_metadata["torizonOSMajor"]
 _template_name = _project_metadata['templateName']
+
+# support to update the custom fields
+_has_custom_fields = _project_metadata.get('hasCustomFields', False)
+_custom_fields = []
+if _has_custom_fields:
+    _custom_fields = _project_metadata['customFields']
 
 # signalize if the user is under a torizonOSMajor not 7
 if _torizonOSMajor != "7":
@@ -391,6 +399,11 @@ cp -f \
     @(f"{os.environ['HOME']}/.apollox/scripts/torizon-io.xsh") \
     @(f"{project_folder}/.conf/torizon-io.xsh")
 
+# DOCKER LOGIN:
+cp -f \
+    @(f"{os.environ['HOME']}/.apollox/scripts/docker-login.xsh") \
+    @(f"{project_folder}/.conf/docker-login.xsh")
+
 # CREATE DOCKER COMPOSE PRODUCTION:
 cp -f \
     @(f"{os.environ['HOME']}/.apollox/scripts/create-docker-compose-production.xsh") \
@@ -411,18 +424,28 @@ cp -f \
     @(f"{os.environ['HOME']}/.apollox/scripts/validate-deps-running.xsh") \
     @(f"{project_folder}/.conf/validate-deps-running.xsh")
 
+# APPLY CI SETTINGS FILE:
+cp -f \
+    @(f"{os.environ['HOME']}/.apollox/scripts/apply-ci-settings-file.xsh") \
+    @(f"{project_folder}/.conf/apply-ci-settings-file.xsh")
+
 # TORIZONPACKAGES:
 cp -f \
     @(f"{os.environ['HOME']}/.apollox/scripts/torizon-packages.xsh") \
     @(f"{project_folder}/.conf/torizon-packages.xsh")
+
+# VALIDATE JSON FILES:
+cp -f \
+    @(f"{os.environ['HOME']}/.apollox/scripts/validate-json.xsh") \
+    @(f"{project_folder}/.conf/validate-json.xsh")
 
 # DOCUMENTATION:
 if not os.path.exists(f"{project_folder}/.doc"):
     mkdir -p @(f"{project_folder}/.doc")
 
 cp -rf \
-    @(f"{os.environ['HOME']}/.apollox/{_template_name}/.doc") \
-    @(f"{project_folder}/.doc")
+    @(f"{os.environ['HOME']}/.apollox/{_template_name}/.doc/.") \
+    @(f"{project_folder}/.doc/")
 
 
 print("✅ always accept new OK", color=Color.GREEN)
@@ -458,31 +481,74 @@ cp -f \
     @(f"{os.environ['HOME']}/.apollox/{_template_name}/.vscode/tasks.json") \
     @(f"{project_folder}/.conf/tmp/tasks-next.json")
 
-# tcb also does not need to merge the common tasks
-if "mergeCommon" not in _template_metadata:
-    print("Applying common tasks ...", color=Color.YELLOW)
+print("Applying common tasks ...", color=Color.YELLOW)
 
-    _common_tasks_file = open(f"{os.environ['HOME']}/.apollox/assets/tasks/common.json", "r")
-    _common_tasks = json.loads(_common_tasks_file.read())
-    _common_tasks_file.close()
+with open(f"{os.environ['HOME']}/.apollox/assets/tasks/common.json", "r") as f:
+        _common_tasks = json.load(f)
 
-    _common_inputs_file = open(f"{os.environ['HOME']}/.apollox/assets/tasks/inputs.json", "r")
-    _common_inputs = json.loads(_common_inputs_file.read())
-    _common_inputs_file.close()
+with open(f"{os.environ['HOME']}/.apollox/assets/tasks/inputs.json", "r") as f:
+    _common_inputs = json.load(f)
 
-    _proj_tasks_file = open(f"{project_folder}/.conf/tmp/tasks-next.json", "r")
-    _proj_tasks = json.loads(_proj_tasks_file.read())
-    _proj_tasks_file.close()
+# Load project tasks
+tasks_path = f"{project_folder}/.conf/tmp/tasks-next.json"
+with open(tasks_path, "r") as f:
+    _proj_tasks = json.load(f)
 
-    # merge then
-    _proj_tasks["tasks"] += _common_tasks["tasks"]
-    _proj_tasks["inputs"] += _common_inputs["inputs"]
+# Get merge instructions
+merge_config = _template_metadata.get("mergeCommon", {})
+task_labels_to_merge = merge_config.get("tasks", "all")
+input_ids_to_merge = merge_config.get("inputs", "all")
 
-    # save the new tasks
-    _proj_tasks_file = open(f"{project_folder}/.conf/tmp/tasks-next.json", "w")
-    _proj_tasks_file.write(json.dumps(_proj_tasks, indent=4))
-    _proj_tasks_file.close()
+def should_merge(item_label, allowed):
+    return allowed == "all" or "all" in allowed or item_label in allowed
 
+# Check if template-specific tasks are on the template's tasks.json
+# If so, we need to exclude them from the merge list (that is, not add the ones that are on common.json)
+template_specific_tasks = ["template-specific-initial-task", "template-specific-final-task"]
+existing_template_tasks = {task.get("label") for task in _proj_tasks.get("tasks", [])}
+tasks_to_exclude = [task for task in template_specific_tasks if task in existing_template_tasks]
+
+if tasks_to_exclude:
+    if task_labels_to_merge == "all":
+        # Convert "all" to explicit list
+        task_labels_to_merge = [task.get("label") for task in _common_tasks.get("tasks", [])]
+    # Remove tasks listed in tasks_to_exclude
+    task_labels_to_merge = [label for label in task_labels_to_merge if label not in tasks_to_exclude]
+
+merged_tasks = [
+    task for task in _common_tasks.get("tasks", [])
+    if should_merge(task.get("label"), task_labels_to_merge)
+]
+merged_inputs = [
+    input_ for input_ in _common_inputs.get("inputs", [])
+    if should_merge(input_.get("id"), input_ids_to_merge)
+]
+
+_proj_tasks.setdefault("tasks", []).extend(merged_tasks)
+_proj_tasks.setdefault("inputs", []).extend(merged_inputs)
+
+with open(tasks_path, "w") as f:
+    f.write(json.dumps(_proj_tasks, indent=4))
+
+common_settings_path = f"{os.environ['HOME']}/.apollox/assets/settings/common.json"
+project_settings_path = f"{project_folder}/.conf/tmp/settings-next.json"
+
+try:
+    with open(common_settings_path, "r") as f:
+        _common_settings = json.load(f)
+
+    with open(project_settings_path, "r") as f:
+        _proj_settings = json.load(f)
+
+except FileNotFoundError:
+    raise FileNotFoundError("Missing settings.json or common.json file.")
+
+# Apply only keys that don't already exist in project settings
+for key, value in _common_settings.items():
+    _proj_settings.setdefault(key, value)
+
+with open(project_settings_path, "w") as f:
+    json.dump(_proj_settings, f, indent=4)
 
 # go to the tmp folder
 _old_location = os.getcwd()
@@ -539,8 +605,6 @@ _deps = json.loads(_deps_file.read())
 _deps_file.close()
 
 if "installDepsScripts" in _deps and len(_deps["installDepsScripts"]) > 0:
-    if not os.path.exists(f"{project_folder}/.conf/installDepsScripts"):
-        mkdir -p @(f"{project_folder}/.conf/installDepsScripts")
 
     if not os.path.exists("./installDepsScripts"):
         mkdir -p @("./installDepsScripts")
@@ -552,7 +616,7 @@ if "installDepsScripts" in _deps and len(_deps["installDepsScripts"]) > 0:
     # This is useful when there are scripts that are common for many templates.
     for _script in _deps["installDepsScripts"]:
         if not os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/{_script}") and ".conf/installDepsScripts" in _script:
-            _script_source = script.replace(".conf", "scripts")
+            _script_source = _script.replace(".conf", "scripts")
         else:
             _script_source = f"{_template_name}/{_script}"
 
@@ -587,7 +651,14 @@ for root, dirs, files in os.walk("."):
             content = f.read()
 
         content = content.replace("__change__", project_name)
-        content = content.replace("__container__", _project_metadata["containerName"])
+
+        if not _has_custom_fields:
+            content = content.replace("__container__", container_name)
+        else:
+            # also check for ids from the custom fields
+            for _field in _custom_fields:
+                content = content.replace(f"__{_field['id']}__", _field['value'])
+
         content = content.replace("__home__", os.environ["HOME"])
         content = content.replace("__templateFolder__", _template_name)
 
@@ -743,12 +814,15 @@ print("✅ common files OK", color=Color.GREEN)
 print("Checking deps scripts ...", color=Color.YELLOW)
 
 if "installDepsScripts" in _deps:
+    if not os.path.exists(f"{project_folder}/.conf/installDepsScripts"):
+        mkdir -p @(f"{project_folder}/.conf/installDepsScripts")
+
     for script in _deps["installDepsScripts"]:
-        _script_dest = script.replace(".conf/", "")
+        _script_src = script.replace(".conf/", "")
 
         _open_merge_window(
-            f"{project_folder}/.conf/tmp/{_script_dest}",
-            f"{project_folder}/{_script_dest}"
+            f"{project_folder}/.conf/tmp/{_script_src}",
+            f"{project_folder}/{_script}"
         )
 
         print(f"✅ {_script_dest}", color=Color.GREEN)

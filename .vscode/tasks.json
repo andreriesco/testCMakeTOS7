@@ -184,8 +184,8 @@
                 "build-debug-arm64",
                 "build-container-torizon-debug-arm64",
                 "push-container-torizon-debug-arm64",
-                "pull-container-torizon-debug-arm64",
-                "run-container-torizon-debug-arm64"
+                "pull-container-torizon-debug",
+                "run-container-torizon-debug"
             ],
             "dependsOrder": "sequence",
             "problemMatcher": "$msCompile",
@@ -258,8 +258,8 @@
                 "build-debug-arm",
                 "build-container-torizon-debug-arm",
                 "push-container-torizon-debug-arm",
-                "pull-container-torizon-debug-arm",
-                "run-container-torizon-debug-arm"
+                "pull-container-torizon-debug",
+                "run-container-torizon-debug"
             ],
             "dependsOrder": "sequence",
             "problemMatcher": "$msCompile",
@@ -415,9 +415,7 @@
             },
             "args": [
                 "${workspaceFolder}/.conf/project-updater.xsh",
-                "${workspaceFolder}",
-                "${workspaceFolderBasename}",
-                "0"
+                "False"
             ],
             "dependsOrder": "sequence",
             "dependsOn": [
@@ -445,9 +443,7 @@
             },
             "args": [
                 "${workspaceFolder}/.conf/project-updater.xsh",
-                "${workspaceFolder}",
-                "${workspaceFolderBasename}",
-                "1"
+                "True"
             ],
             "dependsOrder": "sequence",
             "dependsOn": [
@@ -472,6 +468,8 @@
             "type": "process",
             "options": {
                 "env": {
+                    "DOCKER_REGISTRY": "${command:docker_registry}",
+                    "DOCKER_LOGIN": "${command:docker_login}",
                     "DOCKER_PSSWD": "${command:docker_password}",
                     "TORIZON_ARCH": "${input:archList}",
                     "APP_ROOT": "${config:torizon_app_root}",
@@ -484,9 +482,7 @@
             "args": [
                 "${workspaceFolder}/.conf/create-docker-compose-production.xsh",
                 "${workspaceFolder}",
-                "${command:docker_login}",
                 "${command:docker_tag}",
-                "${command:docker_registry}",
                 "testcmaketos7",
                 "${config:torizon_gpu}"
             ],
@@ -631,34 +627,28 @@
         {
             "label": "docker-login",
             "detail": "Perform a docker login on the host",
-            "command": "DOCKER_HOST=",
+            "command": "xonsh",
             "type": "shell",
             "options": {
                 "env": {
+                    "DOCKER_PSSWD": "${command:docker_password}",
                     "DOCKER_LOGIN": "${command:docker_login}",
-                    "DOCKER_PSSWD": "${command:docker_password}"
+                    "DOCKER_REGISTRY": "${command:docker_registry}"
                 }
+            },
+            "args": [
+                "${workspaceFolder}/.conf/docker-login.xsh"
+            ],
+            "dependsOrder": "sequence",
+            "icon": {
+                "id": "account",
+                "color": "terminal.ansiCyan"
             },
             "presentation": {
                 "echo": false,
                 "reveal": "always",
                 "focus": false,
                 "panel": "shared"
-            },
-            "args": [
-                "echo",
-                "${command:docker_password}",
-                "|",
-                "docker",
-                "login",
-                "--username",
-                "${command:docker_login}",
-                "--password-stdin"
-            ],
-            "dependsOrder": "sequence",
-            "icon": {
-                "id": "account",
-                "color": "terminal.ansiCyan"
             }
         },
         {
@@ -873,7 +863,7 @@
             "command": "xonsh",
             "type": "process",
             "args": [
-                "${workspaceFolder}/.conf/torizon-packages.xhs",
+                "${workspaceFolder}/.conf/torizon-packages.xsh",
                 "amd64"
             ],
             "dependsOrder": "sequence",
@@ -1037,7 +1027,7 @@
             "type": "process",
             "args": [
                 "-c",
-                "[[ \"${config:torizon_arch}\" == \"armv7l\" ]] && true || false"
+                "[[ \"${config:torizon_arch}\" == \"arm\" ]] && true || false"
             ],
             "dependsOrder": "sequence",
             "problemMatcher": "$msCompile",
@@ -1080,7 +1070,6 @@
         {
             "label": "containers-cleanup",
             "detail": "Docker compose down on the target (default device)",
-            "hide": true,
             "command": "if",
             "type": "shell",
             "args": [
@@ -1161,16 +1150,10 @@
         },
         {
             "label": "remove-dangling-images",
-            "detail": "",
-            "hide": true,
-            "command": "DOCKER_HOST=${config:torizon_ip}:2375",
-            "type": "shell",
+            "type": "process",
+            "command": "${workspaceFolder}/.conf/remove-dangling-images.xsh",
             "args": [
-                "docker",
-                "image",
-                "prune",
-                "-f",
-                "--filter=dangling=true"
+                "${config:torizon_ip}:2375"
             ],
             "dependsOrder": "sequence",
             "problemMatcher": "$msCompile",
@@ -1187,6 +1170,60 @@
             }
         },
         {
+            "label": "create-store-folder",
+            "detail": "",
+            "hide": true,
+            "command": "mkdir",
+            "type": "shell",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+                "-p",
+                ".store-testcmaketos7"
+            ],
+            "dependsOrder": "sequence"
+        },
+        {
+            "label": "store-local-debug",
+            "detail": "",
+            "hide": true,
+            "command": "DOCKER_HOST=",
+            "type": "shell",
+            "options": {
+                "cwd": "${workspaceFolder}/.store-testcmaketos7"
+            },
+            "args": [
+                "docker",
+                "save",
+                "localhost:5002/testcmaketos7-debug:${config:torizon_arch}",
+                "|",
+                "tar",
+                "-xvf",
+                "-"
+            ],
+            "dependsOrder": "sequence"
+        },
+        {
+            "label": "sync-store-debug",
+            "detail": "",
+            "hide": true,
+            "command": "sshpass",
+            "type": "shell",
+            "args": [
+                "-p",
+                "${config:torizon_psswd}",
+                "rsync",
+                "-av",
+                "--progress",
+                "-e",
+                "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+                ".store-testcmaketos7/",
+                "${config:torizon_login}@${config:torizon_ip}:/home/${config:torizon_login}/.store-testcmaketos7"
+            ],
+            "dependsOrder": "sequence"
+        },
+        {
             "label": "build-container-torizon-debug-arm64",
             "detail": "",
             "hide": true,
@@ -1195,7 +1232,7 @@
             "options": {
                 "env": {
                     "LOCAL_REGISTRY": "localhost",
-                    "TAG": "arm64",
+                    "TAG": "${config:torizon_arch}",
                     "GPU": "${config:torizon_gpu}",
                     "DEBUG_SSH_PORT": "${config:torizon_debug_ssh_port}",
                     "DEBUG_PORT1": "${config:torizon_debug_port1}",
@@ -1508,7 +1545,7 @@
             "options": {
                 "env": {
                     "LOCAL_REGISTRY": "localhost",
-                    "TAG": "arm64",
+                    "TAG": "${config:torizon_arch}",
                     "GPU": "${config:torizon_gpu}",
                     "DEBUG_SSH_PORT": "${config:torizon_debug_ssh_port}",
                     "DEBUG_PORT1": "${config:torizon_debug_port1}",
@@ -1574,142 +1611,31 @@
             }
         },
         {
-            "label": "pull-container-torizon-debug-arm64",
+            "label": "pull-container-torizon-debug",
             "detail": "",
             "hide": true,
-            "command": "DOCKER_HOST=${config:torizon_ip}:2375",
+            "command": "sshpass",
             "type": "shell",
             "args": [
-                "LOCAL_REGISTRY=${config:host_ip}",
-                "TAG=arm64",
-                "GPU=${config:torizon_gpu}",
-                "DEBUG_SSH_PORT=${config:torizon_debug_ssh_port}",
-                "DEBUG_PORT1=${config:torizon_debug_port1}",
-                "DEBUG_PORT2=${config:torizon_debug_port2}",
-                "DEBUG_PORT3=${config:torizon_debug_port3}",
-                "docker",
-                "compose",
-                "pull",
-                "testcmaketos7-debug"
-            ],
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "wait-a-bit"
-            ],
-            "problemMatcher": "$msCompile",
-            "icon": {
-                "id": "repo-pull",
-                "color": "terminal.ansiYellow"
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "shared",
-                "group": "build-execution"
-            }
-        },
-        {
-            "label": "pull-container-torizon-debug-arm",
-            "detail": "",
-            "hide": true,
-            "command": "DOCKER_HOST=${config:torizon_ip}:2375",
-            "type": "shell",
-            "args": [
-                "LOCAL_REGISTRY=${config:host_ip}",
-                "TAG=arm",
-                "GPU=${config:torizon_gpu}",
-                "DEBUG_SSH_PORT=${config:torizon_debug_ssh_port}",
-                "DEBUG_PORT1=${config:torizon_debug_port1}",
-                "DEBUG_PORT2=${config:torizon_debug_port2}",
-                "DEBUG_PORT3=${config:torizon_debug_port3}",
-                "docker",
-                "compose",
-                "pull",
-                "testcmaketos7-debug"
-            ],
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "wait-a-bit"
-            ],
-            "problemMatcher": "$msCompile",
-            "icon": {
-                "id": "repo-pull",
-                "color": "terminal.ansiYellow"
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "shared",
-                "group": "build-execution"
-            }
-        },
-        {
-            "label": "pull-container-torizon-debug-amd64",
-            "detail": "",
-            "hide": true,
-            "command": "DOCKER_HOST=${config:torizon_ip}:2375",
-            "type": "shell",
-            "args": [
-                "LOCAL_REGISTRY=${config:host_ip}",
-                "TAG=amd64",
-                "GPU=${config:torizon_gpu}",
-                "DEBUG_SSH_PORT=${config:torizon_debug_ssh_port}",
-                "DEBUG_PORT1=${config:torizon_debug_port1}",
-                "DEBUG_PORT2=${config:torizon_debug_port2}",
-                "DEBUG_PORT3=${config:torizon_debug_port3}",
-                "docker",
-                "compose",
-                "pull",
-                "testcmaketos7-debug"
-            ],
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "wait-a-bit"
-            ],
-            "problemMatcher": "$msCompile",
-            "icon": {
-                "id": "repo-pull",
-                "color": "terminal.ansiYellow"
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "shared",
-                "group": "build-execution"
-            }
-        },
-        {
-            "label": "run-container-torizon-debug-arm64",
-            "detail": "",
-            "hide": true,
-            "command": "DOCKER_HOST=${config:torizon_ip}:2375",
-            "type": "shell",
-            "args": [
-                "LOCAL_REGISTRY=${config:host_ip}",
-                "TAG=arm64",
-                "GPU=${config:torizon_gpu}",
-                "DEBUG_SSH_PORT=${config:torizon_debug_ssh_port}",
-                "DEBUG_PORT1=${config:torizon_debug_port1}",
-                "DEBUG_PORT2=${config:torizon_debug_port2}",
-                "DEBUG_PORT3=${config:torizon_debug_port3}",
-                "docker",
-                "compose",
                 "-p",
-                "torizon",
-                "up",
-                "-d",
-                "testcmaketos7-debug"
+                "${config:torizon_psswd}",
+                "ssh",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "${config:torizon_login}@${config:torizon_ip}",
+                "cd /home/${config:torizon_login} && tar cf - -C .store-testcmaketos7/ . | docker load"
             ],
             "dependsOrder": "sequence",
             "dependsOn": [
-                "wait-a-bit"
+                "create-store-folder",
+                "store-local-debug",
+                "sync-store-debug"
             ],
             "problemMatcher": "$msCompile",
             "icon": {
-                "id": "debug-alt",
+                "id": "repo-pull",
                 "color": "terminal.ansiYellow"
             },
             "presentation": {
@@ -1721,53 +1647,14 @@
             }
         },
         {
-            "label": "run-container-torizon-debug-arm",
+            "label": "run-container-torizon-debug",
             "detail": "",
             "hide": true,
             "command": "DOCKER_HOST=${config:torizon_ip}:2375",
             "type": "shell",
             "args": [
-                "LOCAL_REGISTRY=${config:host_ip}",
-                "TAG=arm",
-                "GPU=${config:torizon_gpu}",
-                "DEBUG_SSH_PORT=${config:torizon_debug_ssh_port}",
-                "DEBUG_PORT1=${config:torizon_debug_port1}",
-                "DEBUG_PORT2=${config:torizon_debug_port2}",
-                "DEBUG_PORT3=${config:torizon_debug_port3}",
-                "docker",
-                "compose",
-                "-p",
-                "torizon",
-                "up",
-                "-d",
-                "testcmaketos7-debug"
-            ],
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "wait-a-bit"
-            ],
-            "problemMatcher": "$msCompile",
-            "icon": {
-                "id": "debug-alt",
-                "color": "terminal.ansiYellow"
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "shared",
-                "group": "build-execution"
-            }
-        },
-        {
-            "label": "run-container-torizon-debug-amd64",
-            "detail": "",
-            "hide": true,
-            "command": "DOCKER_HOST=${config:torizon_ip}:2375",
-            "type": "shell",
-            "args": [
-                "LOCAL_REGISTRY=${config:host_ip}",
-                "TAG=amd64",
+                "LOCAL_REGISTRY=localhost",
+                "TAG=${config:torizon_arch}",
                 "GPU=${config:torizon_gpu}",
                 "DEBUG_SSH_PORT=${config:torizon_debug_ssh_port}",
                 "DEBUG_PORT1=${config:torizon_debug_port1}",
@@ -2082,6 +1969,8 @@
                 "DEBUG_PORT3=${config:torizon_debug_port3}",
                 "docker",
                 "compose",
+                "--profile",
+                "release",
                 "pull",
                 "testcmaketos7"
             ],
@@ -2119,6 +2008,8 @@
                 "DEBUG_PORT3=${config:torizon_debug_port3}",
                 "docker",
                 "compose",
+                "--profile",
+                "release",
                 "pull",
                 "testcmaketos7"
             ],
@@ -2156,6 +2047,8 @@
                 "DEBUG_PORT3=${config:torizon_debug_port3}",
                 "docker",
                 "compose",
+                "--profile",
+                "release",
                 "pull",
                 "testcmaketos7"
             ],
@@ -2198,6 +2091,7 @@
             ],
             "dependsOrder": "sequence",
             "dependsOn": [
+                "template-specific-initial-task",
                 "validate-settings",
                 "validate-arch-arm64",
                 "copy-docker-compose",
@@ -2205,6 +2099,7 @@
                 "build-container-torizon-release-arm64",
                 "push-container-torizon-release-arm64",
                 "pull-container-torizon-release-arm64",
+                "template-specific-final-task",
                 "wait-a-bit"
             ],
             "problemMatcher": "$msCompile",
@@ -2237,11 +2132,14 @@
                 "compose",
                 "-p",
                 "torizon",
+                "--profile",
+                "release",
                 "up",
                 "testcmaketos7"
             ],
             "dependsOrder": "sequence",
             "dependsOn": [
+                "template-specific-initial-task",
                 "validate-settings",
                 "validate-arch-arm",
                 "copy-docker-compose",
@@ -2249,6 +2147,7 @@
                 "build-container-torizon-release-arm",
                 "push-container-torizon-release-arm",
                 "pull-container-torizon-release-arm",
+                "template-specific-final-task",
                 "wait-a-bit"
             ],
             "problemMatcher": "$msCompile",
@@ -2281,11 +2180,14 @@
                 "compose",
                 "-p",
                 "torizon",
+                "--profile",
+                "release",
                 "up",
                 "testcmaketos7"
             ],
             "dependsOrder": "sequence",
             "dependsOn": [
+                "template-specific-initial-task",
                 "validate-settings",
                 "validate-arch-amd64",
                 "copy-docker-compose",
@@ -2293,6 +2195,7 @@
                 "build-container-torizon-release-amd64",
                 "push-container-torizon-release-amd64",
                 "pull-container-torizon-release-amd64",
+                "template-specific-final-task",
                 "wait-a-bit"
             ],
             "problemMatcher": "$msCompile",
@@ -2302,6 +2205,62 @@
             },
             "presentation": {
                 "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "group": "build-execution"
+            }
+        },
+        {
+            "label": "template-specific-initial-task",
+            "detail": "Specific task to be executed on the beginning of the release pipeline",
+            "command": "echo",
+            "type": "shell",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+                "'No specific initial task defined for this template'"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "dependsOrder": "sequence",
+            "dependsOn": [],
+            "icon": {
+                "id": "notebook",
+                "color": "terminal.ansiYellow"
+            },
+            "presentation": {
+                "echo": false,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "group": "build-execution"
+            }
+        },
+        {
+            "label": "template-specific-final-task",
+            "detail": "Specific task to be executed on the end of the release pipeline",
+            "command": "echo",
+            "type": "shell",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+                "'No specific final task defined for this template'"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "dependsOrder": "sequence",
+            "dependsOn": [],
+            "icon": {
+                "id": "notebook",
+                "color": "terminal.ansiYellow"
+            },
+            "presentation": {
+                "echo": false,
                 "reveal": "always",
                 "focus": true,
                 "panel": "shared",
@@ -2343,7 +2302,7 @@
                     "TCB_CLIENTSECRET": "${command:tcb.clientSecret}",
                     "TCB_PACKAGE": "testCMakeTOS7",
                     "TCB_FLEET": "${command:tcb.fleetName}",
-                    "TORIZON_ARCH": "${command:torizon_arch}"
+                    "TORIZON_CI_SETTINGS_FILE": ".vscode/settings.json"
                 }
             },
             "args": [
@@ -2400,6 +2359,26 @@
                 "focus": true,
                 "panel": "shared",
                 "group": "build-execution"
+            }
+        },
+        {
+            "label": "validate-json-files",
+            "detail": "Validate the JSON files formatting on the workspace",
+            "command": "xonsh",
+            "type": "shell",
+            "args": [
+                "${workspaceFolder}/scripts/validate-json.xsh"
+            ],
+            "dependsOrder": "sequence",
+            "icon": {
+                "id": "notebook",
+                "color": "terminal.ansiYellow"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": true,
+                "panel": "dedicated"
             }
         }
     ],

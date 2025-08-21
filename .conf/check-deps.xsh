@@ -11,6 +11,8 @@
 
 # use the xonsh environment to update the OS environment
 $UPDATE_OS_ENVIRON = True
+# Get the full log of error
+$XONSH_SHOW_TRACEBACK = True
 # this script expect to have the error handling
 $RAISE_SUBPROC_ERROR = False
 
@@ -19,15 +21,16 @@ import sys
 import json
 import shutil
 from pathlib import Path
+from torizon_templates_utils.network import is_in_gitlab_ci_container
 from torizon_templates_utils.errors import Error,Error_Out,last_return_code
 from torizon_templates_utils.colors import Color,BgColor,print
 
 # clean the workspace set device default to use the local docker engine
 $DOCKER_HOST = ""
 
-if "GITLAB_CI" in os.environ:
-    print("ℹ️ :: GITLAB_CI :: ℹ️")
-    $DOCKER_HOST = "tcp://localhost:2375"
+if is_in_gitlab_ci_container():
+    print("ℹ️ :: GITLAB_CI using docker executor :: ℹ️")
+    $DOCKER_HOST = "tcp://docker:2375"
 
 # docker and docker-compose are special cases
 # TODO: check also for podman or other runtime

@@ -27,7 +27,7 @@
             "preLaunchTask": "build-debug-local"
         },
         {
-            "name": "Torizon ARMv7",
+            "name": "Torizon arm32",
             "type": "cppdbg",
             "request": "launch",
             "program": "${config:torizon_app_root}/testCMakeTOS7",
@@ -38,7 +38,7 @@
             "externalConsole": false,
             "internalConsoleOptions": "openOnSessionStart",
             "logging": {
-                "engineLogging": true
+                "engineLogging": false
             },
             "sourceFileMap": {
                 "${config:torizon_app_root}": "${workspaceFolder}"
@@ -74,7 +74,7 @@
             "preLaunchTask": "deploy-torizon-arm"
         },
         {
-            "name": "Torizon ARMv8",
+            "name": "Torizon arm64",
             "type": "cppdbg",
             "request": "launch",
             "program": "${config:torizon_app_root}/testCMakeTOS7",
@@ -85,7 +85,7 @@
             "externalConsole": false,
             "internalConsoleOptions": "openOnSessionStart",
             "logging": {
-                "engineLogging": true
+                "engineLogging": false
             },
             "sourceFileMap": {
                 "${config:torizon_app_root}": "${workspaceFolder}"
